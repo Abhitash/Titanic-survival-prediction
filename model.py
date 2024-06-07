@@ -1,99 +1,82 @@
 import pandas as pd
-import seaborn as sns 
+import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-import numpy as np
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
-def add_elements():
-    print("ENTER THE ANSWER FOR STRING AS 1 OR 0 ")
-    gen = input("ENTER THE GENDER (Male: 0, Female: 1): ")
-    age = int(input("ENTER THE AGE: "))
-    hypertension = int(input("ENTER THE HYPERTENSION (0 or 1): "))
-    heart_disease = int(input("ENTER THE HEART DISEASE (0 or 1): "))
-    smoking_history = int(input("ENTER THE SMOKING HISTORY (0 or 1): "))
-    bmi = float(input("ENTER THE BMI: "))
-    HbA1c_level = float(input("ENTER THE HbA1c LEVEL: "))
-    blood_glucose_level = float(input("ENTER THE BLOOD GLUCOSE LEVEL: "))
+# Load the data
+test_data = pd.read_csv('tit_test.csv')
+train_data = pd.read_csv('tit_train.csv')
 
-    # Create a dictionary with the input values
-    x_new = {
-        'gender': 1 - int(gen),  # Convert to Male: 1, Female: 0
-        'age': age,
-        'hypertension': hypertension,
-        'heart_disease': heart_disease,
-        'smoking_history': smoking_history,
-        'bmi': np.log(bmi) if bmi > 0 else np.nan,  # Apply log transformation to bmi
-        'HbA1c_level': HbA1c_level,
-        'blood_glucose_level': blood_glucose_level
-    }
-    return x_new
+# Initial findings from the data
+print(train_data.head())
+print(train_data.info())
+print("THE NUMBER OF NULL DATA IS")
+print(train_data.isnull().sum())
 
-data = pd.read_csv("diabetes_prediction_dataset.csv")
-
-# initial data exploration
-print(data.head())
-print(data.info())
-
-print(data.isnull().sum())
-# no null data is present in any column
-
-sns.countplot(x='diabetes',hue='smoking_history',data=data)
+# Plotting the graphs for the data
+sns.countplot(x='Survived', data=train_data)
+plt.title('Count of Survived Passengers')
 plt.show()
 
-sns.countplot(x='diabetes',hue='age',data=data)
+# Plotting with survived vs sex
+sns.countplot(x='Survived', hue='Sex', data=train_data)
+plt.title('Count of Survived Passengers vs Sex')
 plt.show()
 
-sns.countplot(x='diabetes',hue='gender',data=data)
+# Plotting with survived vs age
+sns.countplot(x='Survived', hue='Age', data=train_data)
+plt.title('Count of Survived Passengers vs Age')
 plt.show()
 
-print("skewness of age is",data['age'].skew())
+# Check for skewness
+print("Skewness of Age:", train_data['Age'].skew())
 
-print("skewness of bmi",data['bmi'].skew())
-data['bmi'] = data['bmi'].apply(lambda x: np.log(x) if x > 0 else np.nan)
-print("skewness of bmi",data['bmi'].skew())
-data = pd.get_dummies(data, columns=['smoking_history', 'age', 'gender'], drop_first=True)
-# dropping duplicate value if exits
-data = data.drop_duplicates()
+# Drops the duplicates
+train_data = train_data.drop_duplicates()
 
-x = data.drop(columns='diabetes', axis=1)
-y = data['diabetes']
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
+# Fill missing values in 'Age' with median
+train_data['Age'].fillna(train_data['Age'].median(), inplace=True)
+print("TOTAL AMOUNT OF MISSING VALUES AFTER FILLING AGE:")
+print(train_data.isnull().sum())
 
+# Drop 'Cabin' column due to many missing values
+train_data.drop(columns=['Cabin'], inplace=True)
+
+# Fill missing values in 'Embarked' with the mode
+train_data['Embarked'].fillna(train_data['Embarked'].mode()[0], inplace=True)
+
+# Final check for missing values
+print("TOTAL AMOUNT OF MISSING VALUES AFTER CLEANING:")
+print(train_data.isnull().sum())
+
+# Formation of new features
+train_data['FamilySize'] = train_data['SibSp'] + train_data['Parch'] + 1
+train_data['IsAlone'] = (train_data['FamilySize'] == 1).astype(int)
+
+# Encode categorical variables
+train_data['Sex'] = train_data['Sex'].map({'male': 0, 'female': 1})
+train_data = pd.get_dummies(train_data, columns=['Embarked'], drop_first=True)
+
+# Select features
+features = ['Sex', 'Age', 'FamilySize', 'IsAlone']
+X = train_data[features]
+y = train_data['Survived']
+
+# Split the data
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train the model
 model = LogisticRegression(max_iter=1000)
-model.fit(x_train, y_train)
+model.fit(X_train, y_train)
 
-y_pred_train = model.predict(x_train)
+# Make predictions
+y_pred = model.predict(X_val)
 
-print("accuracy of seen data that is x_train", accuracy_score(y_train, y_pred_train))
-
-y_pred_test = model.predict(x_test)
-print("Accuracy of y prediction on test data is that is unseen data", accuracy_score(y_test, y_pred_test))
-
-# Function to preprocess input data
-def preprocess_input(input_data):
-    # Apply log transformation to BMI
-    input_data['bmi'] = input_data['bmi'].apply(lambda x: np.log(x) if x > 0 else np.nan)
-    
-    # Ensure that all feature names match those seen during training
-    # If any features are missing, add them with default values
-    expected_features = x_train.columns
-    input_data = input_data.reindex(columns=expected_features, fill_value=0)
-    
-    return input_data
-
-# Function to add elements
-input_data = add_elements()
-
-# Convert input data into DataFrame
-input_df = pd.DataFrame([input_data])
-
-# Preprocess input data
-input_df_processed = preprocess_input(input_df)
-
-# Make predictions with the trained model
-prediction = model.predict(input_df_processed)
-
-# Output the prediction
-print("THE OUTCOME FOR THE GIVEN FEATURES IS", prediction[0])
+# Evaluate the model
+print("Accuracy:", accuracy_score(y_val, y_pred))
+print("Confusion Matrix:")
+print(confusion_matrix(y_val, y_pred))
+print("Classification Report:")
+print(classification_report(y_val, y_pred))
